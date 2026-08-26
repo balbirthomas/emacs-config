@@ -56,7 +56,7 @@ If VAR is unset, return DEFAULT if given; otherwise warn via
           (comint-truncate-buffer)))
 
 ;;;; Build/run/clean/distclean a single-file compiled program via make
-(defun run-make-target (target)
+(defun run-make-target (target &optional comint)
   "Run \"make TARGET PROGRAM=<basename> EXT=<extension>\" for the current file.
 Uses a makefile expected to live in the same directory as the file
 being visited, run with that directory as `default-directory'.
@@ -65,7 +65,10 @@ extension, e.g. PROGRAM=foo EXT=f90 for \"foo.f90\" -- passing EXT
 explicitly (rather than leaving it to the makefile to guess) matters
 when more than one extension variant of the same PROGRAM exists in a
 directory (e.g. foo.f90 and foo.f77): only the buffer knows which one
-is actually open. Output goes to a `compile' buffer."
+is actually open. Output goes to a `compile' buffer.
+If COMINT is non-nil, the buffer runs in Comint mode instead of plain
+Compilation mode, so keystrokes are sent to the subprocess's stdin --
+needed for `run', whose program may prompt for interactive input."
   (let* ((file (or buffer-file-name
                     (user-error "Buffer is not visiting a file")))
          (default-directory (file-name-directory file))
@@ -73,7 +76,8 @@ is actually open. Output goes to a `compile' buffer."
          (ext (file-name-extension file)))
     (compile (format "make %s PROGRAM=%s%s" target
                       (shell-quote-argument program)
-                      (if ext (format " EXT=%s" (shell-quote-argument ext)) "")))))
+                      (if ext (format " EXT=%s" (shell-quote-argument ext)) ""))
+              comint)))
 
 (defun build-current-program ()
   "Run the makefile's `build' target for the current file's program."
@@ -81,9 +85,11 @@ is actually open. Output goes to a `compile' buffer."
   (run-make-target "build"))
 
 (defun run-current-program ()
-  "Run the makefile's `run' target for the current file's program."
+  "Run the makefile's `run' target for the current file's program.
+Runs in Comint mode so the program can read interactive input from
+the buffer -- see `run-make-target'."
   (interactive)
-  (run-make-target "run"))
+  (run-make-target "run" t))
 
 (defun clean-current-program ()
   "Run the makefile's `clean' target for the current file's program."
