@@ -29,7 +29,7 @@
  ;; If there is more than one, they won't work right.
  '(ein:output-area-inlined-images t)
  '(package-selected-packages
-   '(pygn-mode poly-rst poly-R ein yasnippet-snippets xcscope with-editor websocket undo-tree tabbar simple-httpd session s restart-emacs pyvenv py-autopep8 projectile pos-tip pod-mode org-contrib muttrc-mode mutt-alias mocker markdown-mode ledger js2-mode jabber initsplit htmlize highlight-indentation haskell-mode graphviz-dot-mode graphql go-mode gnuplot ghub folding find-file-in-project exec-path-from-shell esxml ess eproject elfeed diminish dh-elpa deferred dash csv-mode company color-theme-modern browse-kill-ring boxquote bm bar-cursor apache-mode))
+   '(pygn-mode poly-rst poly-R ein yasnippet-snippets xcscope with-editor websocket undo-tree tabbar simple-httpd session s restart-emacs pyvenv py-autopep8 projectile pos-tip pod-mode org-contrib muttrc-mode mutt-alias mocker markdown-mode ledger-mode js2-mode jabber initsplit htmlize highlight-indentation haskell-mode graphviz-dot-mode graphql go-mode gnuplot ghub folding find-file-in-project exec-path-from-shell esxml ess eproject elfeed diminish dh-elpa deferred dash csv-mode company color-theme-modern browse-kill-ring boxquote bm bar-cursor apache-mode))
  '(spice-simulator "Ngspice"))
 
 (provide 'init-custom)

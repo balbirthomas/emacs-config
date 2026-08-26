@@ -12,6 +12,17 @@ environment variables at startup, so the same files work for anyone.
 
    ```elisp
    (setq load-path (append load-path (list (expand-file-name "lisp" user-emacs-directory))))
+
+   ;; GUI/session-managed Emacs instances don't source ~/.bashrc or
+   ;; ~/.profile, so they miss the environment variables below unless
+   ;; imported explicitly. Must run before `mail' (or anything else that
+   ;; reads them) -- see step 2.
+   (require 'exec-path-from-shell)
+   (dolist (var '("EMAIL_NAME" "EMAIL_ADDRESS" "GNUS_NNTP_SERVER"
+                  "IRCSERVER" "IRCNICK" "SAGE_ROOT"))
+     (add-to-list 'exec-path-from-shell-variables var))
+   (exec-path-from-shell-initialize)
+
    (require 'mail)
    (require 'browser)
    (require 'editing)
@@ -28,10 +39,13 @@ environment variables at startup, so the same files work for anyone.
    Emacs only sees environment variables that were set in the environment
    it was launched from — if you launch Emacs from a desktop/app launcher
    rather than a terminal, that environment may not include your shell's
-   exports at all. If variables don't seem to take effect, either launch
-   Emacs from a terminal, or use the `exec-path-from-shell` package (already
-   listed in `init-custom.el`'s installed packages) to import your shell
-   environment into Emacs.
+   exports at all, even though a terminal-launched Emacs would see them
+   fine. The loader above already imports them via `exec-path-from-shell`
+   (a real dependency now, not just an available package) to cover that
+   case; it needs the package installed (`M-x package-install RET
+   exec-path-from-shell RET`, or your distro's `elpa-exec-path-from-shell`)
+   and, on macOS/Linux, does spawn one interactive shell at startup to read
+   them, which costs a second or so.
 
 3. Add matching entries to `~/.authinfo` (mode `600` or `640`) for whichever
    of mail/Usenet/IRC you use — see "Credentials" below.
@@ -41,7 +55,7 @@ environment variables at startup, so the same files work for anyone.
 | Variable | Used for | If unset |
 |---|---|---|
 | `EMAIL_NAME` | `user-full-name` (mail identity) and ERC's realname field | Left `nil`; a warning is printed at startup |
-| `EMAIL_ADDRESS` | `user-mail-address` | Left `nil`; a warning is printed at startup |
+| `EMAIL_ADDRESS` | `user-mail-address` | Left `nil`; a warning is printed at startup. **Also breaks `C-c C-e h o` (Org HTML export)** — Org's `org-html-format-spec` does an unguarded `split-string` on it while building the preamble, so a `nil` `user-mail-address` throws `(wrong-type-argument stringp nil)` on every HTML export, not just a warning |
 | `GNUS_NNTP_SERVER` | Gnus's Usenet (NNTP) server | Defaults to `news.eternal-september.org` |
 | `IRCNICK` | ERC nickname, and the `auth-source` login used to find your NickServ password | Falls back to your OS login name (`user-login-name`), so connecting never fails outright |
 | `IRCSERVER` | ERC server, used by `M-x erc-connect` / `C-c e f` | Defaults to `irc.libera.chat` |
