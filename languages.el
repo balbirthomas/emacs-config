@@ -3,9 +3,9 @@
 ;;; Commentary:
 ;; Loads the per-language configuration modules: Spice, Octave, GNU
 ;; bc, Python, XPP-AUT, SageMath, AucTeX/Sweave, ESS R Markdown,
-;; Maxima/imaxima/imath, Fortran, C, and C++. Each module is a
-;; self-contained `provide'/`require' unit built on `use-package'; see
-;; its own Commentary for what it configures.
+;; Maxima/imaxima/imath, Fortran, C, C++, and PGN chess (pygn-mode).
+;; Each module is a self-contained `provide'/`require' unit built on
+;; `use-package'; see its own Commentary for what it configures.
 ;;
 ;; Requires utility.el (`clear-comint-buffer', used by the
 ;; Python and SageMath modules; `compiled-program-bind-keys', used by
@@ -27,6 +27,7 @@
 (require 'lang-fortran)
 (require 'lang-c)
 (require 'lang-cpp)
+(require 'lang-chess)
 
 (provide 'languages)
 ;;; languages.el ends here
