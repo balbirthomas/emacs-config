@@ -102,7 +102,14 @@ real, already-loaded Emacs/ELPA libraries — a same-named file here would
 either shadow the real one or never be reached, depending on load-path
 order. Every other file dropped the prefix as unnecessary.
 
-Per-language setup lives in `lang-*.el`, loaded by `languages.el`. To add
+Per-language setup lives in `lang-*.el`, loaded by `languages.el`. One of
+these, `lang-markdown.el`, has a `pandoc-filters/` subdirectory alongside
+it — the only non-Lisp assets here — holding a Pandoc Lua filter and a
+LaTeX header file it shells out to for Markdown's HTML/PDF export. See
+that file's Commentary for how the pieces fit together (requires
+`pandoc`, `xelatex`, and `dvisvgm` on `exec-path`).
+
+To add
 support for another compiled language (build/run/clean/distclean via
 `M-n C-c C-b/C-r/C-c/C-d`, from `utility.el`'s `compiled-program-bind-keys`
 and `run-make-target`): write a makefile with `build`/`run`/`clean`/
