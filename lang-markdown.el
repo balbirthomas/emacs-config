@@ -31,14 +31,24 @@
 ;;   C-c C-c v   `markdown-export-and-preview'  -- also saves <basename>.html
 ;;   C-c C-c e   `markdown-export'              -- just saves <basename>.html
 ;; These already exist in markdown-mode; the only change here is
-;; `markdown-command', set to `my/markdown-pandoc-command' (a function,
+;; `markdown-command', set to `markdown-pandoc-command' (a function,
 ;; not the usual string -- markdown-mode supports this: it funcalls it
 ;; with (BEGIN END OUTPUT-BUFFER) and treats anything that doesn't
 ;; signal an error as success). That function runs Pandoc with:
-;;   - `--mathjax=URL' for math, using `my/markdown-buffer-mathjax-url'
+;;   - `--mathjax=URL' for math, using `markdown-buffer-mathjax-url'
 ;;     (a document can override the CDN URL via a `mathjax-url:' key in
 ;;     its own YAML front matter; otherwise `markdown-default-mathjax-url'
 ;;     is used -- deliberately v2, not v3, per request)
+;;   - `--include-in-header=<generated temp file>' for CSS, when the
+;;     document's own YAML front matter has a `style:' key (see
+;;     `markdown-buffer-style-path'); its value is a path to a CSS
+;;     file (relative paths resolve against the .md file's directory).
+;;     That file's contents are inlined into a `<style>' block rather
+;;     than linked (pandoc's `--css' would just add a `<link href=...>',
+;;     which is exactly the kind of reference that breaks once the HTML
+;;     is moved -- see the TikZ note below for why that matters for
+;;     `markdown-preview' specifically). No `style:' key means no CSS is
+;;     added at all; there is no default stylesheet.
 ;;   - `--lua-filter=pandoc-filters/tikz2svg.lua', which MathJax alone
 ;;     cannot render TikZ diagrams: rasterizes them to cached SVGs and
 ;;     embeds each one directly as a base64 data: URI (the filter does
@@ -50,7 +60,7 @@
 ;;     somewhere else, which `markdown-preview' (C-c C-c p) always does
 ;;     (it writes to a temp file elsewhere before browsing it).
 ;;
-;; PDF export is new: `my/markdown-export-pdf', bound to "C-c C-c d",
+;; PDF export is new: `markdown-export-pdf', bound to "C-c C-c d",
 ;; runs Pandoc with XeLaTeX as the PDF engine and
 ;; pandoc-filters/tikz-preamble.tex (`\usepackage{tikz}') as an
 ;; included header. No MathJax URL is needed on this path -- PDF output
@@ -112,9 +122,9 @@ running that Apache setup. For a document meant to be viewed
 elsewhere, override with a CDN URL, e.g.
 \"https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML\"
 via `mathjax-url:' in that document's own front matter; see
-`my/markdown-buffer-mathjax-url'.")
+`markdown-buffer-mathjax-url'.")
 
-(defun my/markdown-buffer-mathjax-url ()
+(defun markdown-buffer-mathjax-url ()
   "Return the MathJax URL to use for the current buffer.
 Reads a `mathjax-url:' key from a `---'-delimited YAML front-matter
 block at the top of the buffer, if present and the buffer has one;
@@ -134,7 +144,30 @@ otherwise returns `markdown-default-mathjax-url'."
           (match-string 1)
         markdown-default-mathjax-url))))
 
-(defun my/markdown-pandoc-command (begin end output-buffer)
+(defun markdown-buffer-style-path ()
+  "Return the CSS file path named by a `style:' key in the current
+buffer's YAML front matter, or nil if the buffer has no front matter
+or no such key. A relative path is resolved against the directory of
+the visited file (or `default-directory' for an unsaved buffer); see
+`markdown-pandoc-command', which inlines this file's contents into
+the exported HTML rather than linking it."
+  (save-excursion
+    (goto-char (point-min))
+    (let ((front-matter-end
+           (and (looking-at-p "^---[ \t]*$")
+                (save-excursion
+                  (forward-line 1)
+                  (and (re-search-forward "^---[ \t]*$\\|^\\.\\.\\.[ \t]*$" nil t)
+                       (point))))))
+      (when (and front-matter-end
+                 (re-search-forward
+                  "^style:[ \t]*[\"']?\\([^\"'\n]+?\\)[\"']?[ \t]*$"
+                  front-matter-end t))
+        (expand-file-name (match-string 1)
+                           (and buffer-file-name
+                                (file-name-directory buffer-file-name)))))))
+
+(defun markdown-pandoc-command (begin end output-buffer)
   "`markdown-command' function: run Pandoc with MathJax and the TikZ filter.
 See this file's Commentary for the full rationale. Signals an error if
 Pandoc exits non-zero, which is how `markdown-command' functions report
@@ -152,30 +185,48 @@ otherwise show up as literal text at the top of the rendered page.
 `call-process-region' can only redirect stderr to nil, t (mix, the
 default we're avoiding), or a file name -- not directly to a buffer --
 hence the temp file below, whose contents are copied into
-*markdown-pandoc-errors* afterward and then deleted."
-  (let ((err-file (make-temp-file "markdown-pandoc-errors-")))
+*markdown-pandoc-errors* afterward and then deleted.
+
+When the buffer's front matter names a stylesheet (see
+`markdown-buffer-style-path'), its contents are written to a second
+temp file wrapped in a `<style>' tag and passed via
+`--include-in-header', inlining the CSS rather than linking it."
+  (let ((err-file (make-temp-file "markdown-pandoc-errors-"))
+        (style-path (markdown-buffer-style-path))
+        (style-header-file nil))
     (unwind-protect
-        (let ((exit-code
-               (call-process-region
-                begin end "pandoc" nil (list output-buffer err-file) nil
-                "--from=markdown" "--to=html5" "--standalone"
-                (concat "--mathjax=" (my/markdown-buffer-mathjax-url))
-                (concat "--lua-filter="
-                        (expand-file-name "tikz2svg.lua" markdown-pandoc-filters-directory)))))
-          (with-current-buffer (get-buffer-create "*markdown-pandoc-errors*")
-            (erase-buffer)
-            (insert-file-contents err-file))
-          (unless (eq exit-code 0)
-            (display-buffer "*markdown-pandoc-errors*")
-            (error "pandoc failed with exit code %s; see *markdown-pandoc-errors*" exit-code)))
-      (ignore-errors (delete-file err-file)))))
+        (progn
+          (when (and style-path (file-readable-p style-path))
+            (setq style-header-file (make-temp-file "markdown-inline-style-"))
+            (with-temp-file style-header-file
+              (insert "<style type=\"text/css\">\n")
+              (insert-file-contents style-path)
+              (goto-char (point-max))
+              (insert "\n</style>\n")))
+          (let ((exit-code
+                 (apply #'call-process-region
+                        begin end "pandoc" nil (list output-buffer err-file) nil
+                        `("--from=markdown" "--to=html5" "--standalone"
+                          ,(concat "--mathjax=" (markdown-buffer-mathjax-url))
+                          ,(concat "--lua-filter="
+                                   (expand-file-name "tikz2svg.lua" markdown-pandoc-filters-directory))
+                          ,@(when style-header-file
+                              (list (concat "--include-in-header=" style-header-file)))))))
+            (with-current-buffer (get-buffer-create "*markdown-pandoc-errors*")
+              (erase-buffer)
+              (insert-file-contents err-file))
+            (unless (eq exit-code 0)
+              (display-buffer "*markdown-pandoc-errors*")
+              (error "pandoc failed with exit code %s; see *markdown-pandoc-errors*" exit-code))))
+      (ignore-errors (delete-file err-file))
+      (when style-header-file (ignore-errors (delete-file style-header-file))))))
 
 (use-package markdown-mode
   :defer t
   :init
-  (setq markdown-command #'my/markdown-pandoc-command))
+  (setq markdown-command #'markdown-pandoc-command))
 
-(defun my/markdown-export-pdf ()
+(defun markdown-export-pdf ()
   "Export the current Markdown buffer to a same-named PDF via Pandoc/XeLaTeX.
 Uses `markdown-export-file-name' for the output filename, exactly as
 `markdown-export' does for HTML, and exports the buffer's current
@@ -202,7 +253,7 @@ content (including unsaved edits), not the last-saved file on disk."
                     output-file (buffer-name err-buf))))))
 
 (with-eval-after-load 'markdown-mode
-  (define-key markdown-mode-command-map (kbd "d") 'my/markdown-export-pdf)
+  (define-key markdown-mode-command-map (kbd "d") 'markdown-export-pdf)
   ;; Relocate link navigation off of plain M-n/M-p so M-n is free to be a
   ;; prefix (see this file's Commentary).
   (define-key markdown-mode-map (kbd "M-N") 'markdown-next-link)
