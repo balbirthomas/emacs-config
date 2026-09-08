@@ -31,6 +31,14 @@
 ;; values the way Node's and QuickJS's do -- use `print(...)'
 ;; explicitly to see output from it.
 ;;
+;; `enable-comint-mime-js' (off by default; toggle with `M-x
+;; toggle-comint-mime-js') turns on comint-mime -- see lang-python.el's
+;; Commentary for what that is generally -- in the "node" REPL, so
+;; e.g. a node-canvas (Debian's node-canvas package) Canvas can be
+;; drawn inline in the REPL buffer with `showCanvas(canvas)' instead
+;; of printing as a plain object. See that variable's docstring for
+;; how to use it.
+;;
 ;; Two REPL backends, chosen automatically per interpreter:
 ;;
 ;; - comint (Emacs's normal REPL machinery; the default). Node and
@@ -185,6 +193,101 @@ Displays the REPL buffer without selecting it."
 (define-key js-mode-map (kbd "C-c C-p") 'run-js)
 (define-key js-mode-map (kbd "C-c C-c") 'js-send-buffer)
 (define-key js-mode-map (kbd "C-c C-e") 'js-send-dwim)
+
+;;;; comint-mime (optional, off by default)
+;;
+;; Inline image display (e.g. a node-canvas Canvas) in the "node" REPL
+;; buffer. See lang-python.el's Commentary for what comint-mime is
+;; generally; this applies the same mechanism to `inferior-js-mode',
+;; but only for the "node" interpreter -- comint-mime-node.js needs
+;; Node's `.load' REPL command and `require("canvas")', neither of
+;; which QuickJS or MuJS have.
+(defcustom enable-comint-mime-js nil
+  "Non-nil to enable comint-mime (inline image display) in the \"node\"
+REPL buffer started by `run-js'.
+
+Once enabled, in that REPL:
+
+    const {createCanvas} = require(\"canvas\");
+    const canvas = createCanvas(200, 200);
+    const ctx = canvas.getContext(\"2d\");
+    ctx.fillStyle = \"tomato\";
+    ctx.fillRect(20, 20, 160, 160);
+    showCanvas(canvas);
+
+draws the canvas directly in the buffer instead of printing a
+\"Canvas { ... }\" object. `mimecat(buffer, type)' is also available
+for sending other MIME data by hand; see comint-mime-node.js."
+  :type 'boolean
+  :group 'local)
+
+(defvar comint-mime-node-script
+  (expand-file-name "comint-mime-node.js"
+                     (file-name-directory (or load-file-name buffer-file-name)))
+  "Path to the Node-side comint-mime helper loaded by `comint-mime-setup-js'.")
+
+(defun comint-mime-setup-js (&rest _)
+  "Setup code specific to `inferior-js-mode', for
+`comint-mime-setup-function-alist'.
+Only acts in a \"*js-node*\" buffer (see `js-repl-buffer-name'); does
+nothing in other `inferior-js-mode' buffers (MuJS), which have no
+`canvas' module for `comint-mime-node-script' to use. Waits for the
+REPL's first output (Node's startup banner and prompt) before sending
+anything, since sending it any earlier could race Node's own startup;
+removes itself from `comint-output-filter-functions' once it has
+fired.
+
+Sends a single `eval(...)' line that reads and evaluates
+`comint-mime-node-script' in one shot, rather than Node's own `.load'
+REPL command -- `.load' also echoes every line of the file (and each
+line's result) back into the buffer, which for even a short script is
+a lot of noise for a one-time setup step."
+  (if (not (equal (buffer-name) (js-repl-buffer-name "node")))
+      (remove-hook 'comint-output-filter-functions 'comint-mime-setup-js t)
+    (if (= (point-min) (point-max))
+        (add-hook 'comint-output-filter-functions 'comint-mime-setup-js nil t)
+      (remove-hook 'comint-output-filter-functions 'comint-mime-setup-js t)
+      (comint-send-string
+       (get-buffer-process (current-buffer))
+       (format "eval(require(%S).readFileSync(%S, \"utf8\"));\n"
+               "fs" comint-mime-node-script)))))
+
+(defun load-comint-mime-js ()
+  "Load comint-mime and hook it into `inferior-js-mode'.
+Also runs `comint-mime-setup' immediately in the \"*js-node*\" buffer
+if one is already running, since `inferior-js-mode-hook' (added here)
+only fires for buffers started after this call -- without this,
+toggling comint-mime-js on while a node REPL is already open would
+silently do nothing to it until it's restarted."
+  (interactive)
+  (add-to-list 'load-path "~/.elisp/comint-mime/")
+  (require 'comint-mime)
+  (unless (assq 'inferior-js-mode comint-mime-setup-function-alist)
+    (push '(inferior-js-mode . comint-mime-setup-js) comint-mime-setup-function-alist))
+  (add-hook 'inferior-js-mode-hook 'comint-mime-setup)
+  (when-let ((buffer (get-buffer (js-repl-buffer-name "node"))))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'inferior-js-mode)
+        (comint-mime-setup)))))
+
+(defun unload-comint-mime-js ()
+  "Remove comint-mime's hook from `inferior-js-mode'.
+Only affects buffers created after this call; existing buffers keep
+whatever was already set up in them."
+  (interactive)
+  (remove-hook 'inferior-js-mode-hook 'comint-mime-setup))
+
+(defun toggle-comint-mime-js ()
+  "Toggle `enable-comint-mime-js' and apply the change immediately."
+  (interactive)
+  (setq enable-comint-mime-js (not enable-comint-mime-js))
+  (if enable-comint-mime-js
+      (load-comint-mime-js)
+    (unload-comint-mime-js))
+  (message "comint-mime-js %s" (if enable-comint-mime-js "enabled" "disabled")))
+
+(when enable-comint-mime-js
+  (load-comint-mime-js))
 
 (provide 'lang-js)
 ;;; lang-js.el ends here
