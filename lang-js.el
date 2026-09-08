@@ -10,10 +10,10 @@
 ;; one:
 ;;
 ;; - "C-c C-p" (`run-js') prompts for which interpreter to use and
-;;   opens it in its own comint buffer, e.g. "*js-node*",
-;;   "*js-quickjs*", "*js-mujs*" -- so more than one can run at once.
-;;   Calling it again for an interpreter that's already running just
-;;   switches to that buffer; "C-u C-c C-p" kills and restarts it.
+;;   opens it in its own buffer, e.g. "*js-node*", "*js-quickjs*",
+;;   "*js-mujs*" -- so more than one can run at once. Calling it again
+;;   for an interpreter that's already running just switches to that
+;;   buffer; "C-u C-c C-p" kills and restarts it.
 ;;
 ;; - "C-c C-c" sends the whole buffer to the REPL; "C-c C-e" sends the
 ;;   active region, or the current line if no region is active ("send
@@ -25,13 +25,33 @@
 ;; buffer, or after that REPL buffer is gone, prompts (via `run-js')
 ;; to pick or start one.
 ;;
-;; "C-c l" in the REPL buffer clears it, matching lang-python.el's
-;; inferior-python-mode binding (via `clear-comint-buffer' from
-;; utility.el).
+;; "C-c l" in the REPL buffer clears it.
 ;;
 ;; Note: MuJS's REPL does not echo a prompt or auto-print expression
 ;; values the way Node's and QuickJS's do -- use `print(...)'
 ;; explicitly to see output from it.
+;;
+;; Two REPL backends, chosen automatically per interpreter:
+;;
+;; - comint (Emacs's normal REPL machinery; the default). Node and
+;;   MuJS use this -- no extra dependency.
+;;
+;; - Eat (a real terminal emulator; see `js-repl-eat-interpreters').
+;;   QuickJS's `-i' REPL does its own cursor-addressed redraws
+;;   (colored syntax highlighting, in-place line editing), which
+;;   comint -- a plain line-based abstraction with no way to execute a
+;;   "move cursor back and erase" escape sequence -- cannot render: it
+;;   can only ever append text, so each of QuickJS's redraws piles up
+;;   as more text instead of replacing the last one, e.g. sending
+;;   `console.log("hello")' shows up mangled as
+;;   "ccoconconsconsoconsole...console.log(\"hello\")". Eat is a
+;;   proper terminal emulator, so it renders these correctly, at the
+;;   cost of a real dependency: the `eat' package (packaged here as
+;;   Debian's elpa-eat -- see debian/ in the emacs-eat checkout
+;;   alongside this directory -- deliberately not installed from
+;;   ELPA). `run-js' requires it lazily, only when actually starting
+;;   an interpreter listed in `js-repl-eat-interpreters', so editing
+;;   JS or running Node/MuJS never needs it installed.
 
 ;;; Code:
 
@@ -49,6 +69,13 @@ SHELL-COMMAND is split on whitespace into a program and its arguments;
 the program must be on `exec-path'. Add, remove, or edit entries to
 change what `run-js' offers."
   :type '(alist :key-type string :value-type string)
+  :group 'local)
+
+(defcustom js-repl-eat-interpreters '("quickjs")
+  "Names (from `js-repl-interpreters') that need Eat instead of comint.
+See this file's Commentary for why. Interpreters not listed here use
+plain comint and never require Eat to be installed."
+  :type '(repeat string)
   :group 'local)
 
 (defvar js-repl-last-interpreter nil
@@ -105,8 +132,14 @@ is set to the new REPL so subsequent sends go there."
         (kill-buffer buffer))
       (setq buffer nil))
     (unless (and buffer (process-live-p (get-buffer-process buffer)))
-      (setq buffer (apply #'make-comint-in-buffer name buffer-name program nil args))
-      (with-current-buffer buffer (inferior-js-mode)))
+      (if (member name js-repl-eat-interpreters)
+          (progn
+            (unless (require 'eat nil t)
+              (user-error "Eat is not installed (Debian package elpa-eat), needed for %s" name))
+            (setq buffer (apply #'eat-make (concat "js-" name) program nil args))
+            (with-current-buffer buffer (local-set-key (kbd "C-c l") 'eat-reset)))
+        (setq buffer (apply #'make-comint-in-buffer name buffer-name program nil args))
+        (with-current-buffer buffer (inferior-js-mode))))
     (when source-buffer
       (with-current-buffer source-buffer
         (setq js-repl-target-buffer buffer)))
@@ -128,8 +161,11 @@ already associated in `js-repl-target-buffer'."
   "Send STRING, followed by a newline, to this buffer's JS REPL.
 Displays the REPL buffer without selecting it."
   (let ((buffer (js-repl-get-buffer)))
-    (comint-send-string buffer string)
-    (comint-send-string buffer "\n")
+    (with-current-buffer buffer
+      (if (eq major-mode 'eat-mode)
+          (eat-term-send-string eat-terminal (concat string "\n"))
+        (comint-send-string buffer string)
+        (comint-send-string buffer "\n")))
     (display-buffer buffer)))
 
 (defun js-send-buffer ()

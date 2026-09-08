@@ -1,0 +1,4 @@
+/emacs-eat/
+*.deb
+*.buildinfo
+*.changes
