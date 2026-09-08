@@ -2,9 +2,9 @@
 
 ;;; Commentary:
 ;; Loads the per-language configuration modules: Spice, Octave, GNU
-;; bc, Python, XPP-AUT, SageMath, AucTeX/Sweave, ESS R Markdown,
-;; Markdown (LaTeX/TikZ-aware HTML and PDF export), Maxima/imaxima/imath,
-;; Fortran, C, C++, and PGN chess (pygn-mode).
+;; bc, Python, JavaScript, XPP-AUT, SageMath, AucTeX/Sweave, ESS R
+;; Markdown, Markdown (LaTeX/TikZ-aware HTML and PDF export),
+;; Maxima/imaxima/imath, Fortran, C, C++, and PGN chess (pygn-mode).
 ;; Each module is a self-contained `provide'/`require' unit built on
 ;; `use-package'; see its own Commentary for what it configures.
 ;;
@@ -20,6 +20,7 @@
 (require 'lang-octave)
 (require 'lang-bc)
 (require 'lang-python)
+(require 'lang-js)
 (require 'lang-xppaut)
 (require 'lang-sage)
 (require 'lang-auctex)
