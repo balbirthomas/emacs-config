@@ -4,11 +4,11 @@
 ;; Adds the MELPA Stable package archive and initializes package.el.
 ;;
 ;; Also defines `enable-eaf', an optional-feature toggle following the
-;; same pattern as `enable-comint-mime'/`python-use-ipython' in
-;; lang-python.el.
+;; same pattern as `enable-comint-mime-shell' (init-shell.el)/
+;; `python-use-ipython' (lang-python.el).
 ;;
 ;; EAF/eaf-jupyter is off by default (`comint-mime' -- see
-;; lang-python.el -- covers the same "inline rich output in a
+;; init-shell.el -- covers the same "inline rich output in a
 ;; shell buffer" need more lightly). To turn it on:
 ;;   - permanently: `M-x customize-variable RET enable-eaf RET',
 ;;     or (setq enable-eaf t) before this file loads; takes
@@ -28,8 +28,8 @@
 ;;;; EAF / eaf-jupyter (optional, off by default)
 (defcustom enable-eaf nil
   "Non-nil to load EAF (Emacs Application Framework) and eaf-jupyter at startup.
-See this file's Commentary for how EAF differs from `enable-comint-mime'
-and why disabling it does not stop an already-running session."
+See this file's Commentary for how EAF differs from `enable-comint-mime-shell'
+(init-shell.el) and why disabling it does not stop an already-running session."
   :type 'boolean
   :group 'local)
 

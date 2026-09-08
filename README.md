@@ -30,6 +30,7 @@ environment variables at startup, so the same files work for anyone.
    (require 'utility)
    (require 'packages)
    (require 'init-org)
+   (require 'init-shell)
    (require 'languages)
    (require 'init-custom)
    ```
@@ -95,12 +96,13 @@ matches against at connection time.
 ## Layout
 
 Each file is a self-contained `provide`/`require` unit; see its own
-`;;; Commentary:` header for what it configures. Three files keep an
+`;;; Commentary:` header for what it configures. Four files keep an
 `init-` prefix on their filename (`init-org.el`, `init-erc.el`,
-`init-custom.el`) because their bare names (`org`, `erc`, `custom`) are
-real, already-loaded Emacs/ELPA libraries — a same-named file here would
-either shadow the real one or never be reached, depending on load-path
-order. Every other file dropped the prefix as unnecessary.
+`init-custom.el`, `init-shell.el`) because their bare names (`org`,
+`erc`, `custom`, `shell`) are real, already-loaded Emacs/ELPA
+libraries — a same-named file here would either shadow the real one or
+never be reached, depending on load-path order. Every other file
+dropped the prefix as unnecessary.
 
 Per-language setup lives in `lang-*.el`, loaded by `languages.el`. One of
 these, `lang-markdown.el`, has a `pandoc-filters/` subdirectory alongside
@@ -123,14 +125,27 @@ and `run-make-target`): write a makefile with `build`/`run`/`clean`/
 
 ## Optional features (off by default)
 
-Three things are disabled unless you turn them on, so default behavior is
+Five things are disabled unless you turn them on, so default behavior is
 unaffected by their presence:
 
 - `M-x toggle-eaf` — EAF (Emacs Application Framework) + eaf-jupyter.
-- `M-x toggle-comint-mime` — inline rich output in shell/Python buffers.
+- `M-x toggle-comint-mime-shell` (`init-shell.el`) — inline rich output in
+  shell-mode buffers (`M-x shell`).
+- `M-x toggle-comint-mime-python` (`lang-python.el`) — inline rich output
+  (an IPython-notebook-like experience) in Python REPL buffers
+  (`M-x run-python`).
+- `M-x toggle-comint-mime-js` (`lang-js.el`) — inline image display (e.g. a
+  node-canvas `Canvas`, via `showCanvas(canvas)`) in the Node REPL buffer
+  (`M-x run-js`, interpreter "node"). Not available for QuickJS/MuJS.
 - `M-x toggle-python-interpreter` — switch between Python and IPython for
   new `run-python` shells (Python is the default).
 
-All three are `defcustom`s under Emacs's standard `local` customize group
+The three `comint-mime-*` toggles are independent (each affects only its
+own buffer/mode) but share the same underlying `comint-mime` package
+(`~/.elisp/comint-mime/`, not installed from ELPA), which in turn hard-
+requires the `mathjax` ELPA package — packaged locally as `elpa-mathjax`
+rather than installed from ELPA directly (see `lang-js.el`'s Commentary).
+
+All five are `defcustom`s under Emacs's standard `local` customize group
 (`M-x customize-group RET local RET`) if you'd rather set them permanently
 than toggle per session.
