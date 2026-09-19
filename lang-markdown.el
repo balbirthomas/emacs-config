@@ -30,6 +30,34 @@
 ;;   C-c C-c p   `markdown-preview'            -- compile, open in browser
 ;;   C-c C-c v   `markdown-export-and-preview'  -- also saves <basename>.html
 ;;   C-c C-c e   `markdown-export'              -- just saves <basename>.html
+;;
+;; Difference between C-c C-c p and C-c C-c v (both use the same Pandoc
+;; command, so the HTML content is identical -- only where it goes differs):
+;;   - `p' (`markdown-preview') renders to a temporary HTML file (under
+;;     `temporary-file-directory', e.g. /tmp) and opens that in the
+;;     browser. Nothing is left in the document's directory, and it works
+;;     on a buffer that isn't visiting a file. Because the page lives
+;;     elsewhere, any relative link in it (`images/x.jpg') would break,
+;;     which is why the Pandoc filter embeds images as data: URIs.
+;;   - `v' (`markdown-export-and-preview') saves <basename>.html next to
+;;     the .md file (overwriting any existing one), then opens that file.
+;;     The buffer must visit a file. Relative links happen to resolve
+;;     because the HTML sits beside the images, but it also leaves
+;;     README.html etc. behind (consider .gitignore).
+;;   - `e' (`markdown-export') is `v' without opening the browser.
+;; Since images and TikZ are both embedded, the three commands produce
+;; equivalent, self-contained pages; choose by whether you want a file
+;; left behind (`v'/`e') or not (`p').
+;;
+;; Plain images `![caption](path)' are embedded by tikz2svg.lua's `Image'
+;; handler for png, apng, jpg/jpeg/jpe/jfif, gif, svg, webp, avif, bmp,
+;; ico and tif/tiff (extension match is case-insensitive). Paths are
+;; relative to the .md file's directory and may be %20-encoded; remote
+;; URLs, unknown extensions and unreadable files are left as ordinary
+;; links (a note goes to *markdown-pandoc-errors*). Pandoc turns an
+;; image standing alone in a paragraph into <figure><figcaption>, using
+;; the alt text as the visible caption.
+;;
 ;; These already exist in markdown-mode; the only change here is
 ;; `markdown-command', set to `markdown-pandoc-command' (a function,
 ;; not the usual string -- markdown-mode supports this: it funcalls it
@@ -58,7 +86,10 @@
 ;;     actually useful, so it is deliberately not passed here). This
 ;;     keeps the image working even when the resulting HTML is moved
 ;;     somewhere else, which `markdown-preview' (C-c C-c p) always does
-;;     (it writes to a temp file elsewhere before browsing it).
+;;     (it writes to a temp file elsewhere before browsing it). The same
+;;     filter's `Image' handler embeds plain local images
+;;     (`![caption](images/x.jpg)') as data: URIs the same way, so they
+;;     also survive that move; remote URLs are left as links.
 ;;
 ;; PDF export is new: `markdown-export-pdf', bound to "C-c C-c d",
 ;; runs Pandoc with XeLaTeX as the PDF engine and

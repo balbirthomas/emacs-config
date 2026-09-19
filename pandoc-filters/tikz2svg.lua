@@ -47,19 +47,33 @@
 
 local cache_dir = ".tikz-cache"
 
--- Pure-Lua base64 encoder (no external `base64' dependency).
+-- Pure-Lua base64 encoder (no external `base64' dependency). Works three
+-- bytes at a time via a lookup table so multi-megabyte photos (see the
+-- Image handler below) encode in well under a second.
 local b64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local b64 = {}
+for i = 1, 64 do b64[i - 1] = b64chars:sub(i, i) end
 local function base64_encode(data)
-  return ((data:gsub(".", function(x)
-    local r, byte = "", x:byte()
-    for i = 8, 1, -1 do r = r .. (byte % 2 ^ i - byte % 2 ^ (i - 1) > 0 and "1" or "0") end
-    return r
-  end) .. "0000"):gsub("%d%d%d?%d?%d?%d?", function(x)
-    if #x < 6 then return "" end
-    local c = 0
-    for i = 1, 6 do c = c + (x:sub(i, i) == "1" and 2 ^ (6 - i) or 0) end
-    return b64chars:sub(c + 1, c + 1)
-  end) .. ({ "", "==", "=" })[#data % 3 + 1])
+  local out, n = {}, 0
+  local len = #data
+  for i = 1, len - 2, 3 do
+    local a, b, c = data:byte(i, i + 2)
+    local v = a * 65536 + b * 256 + c
+    n = n + 1
+    out[n] = b64[v >> 18] .. b64[(v >> 12) & 63] .. b64[(v >> 6) & 63] .. b64[v & 63]
+  end
+  local rest = len % 3
+  if rest == 1 then
+    local a = data:byte(len)
+    n = n + 1
+    out[n] = b64[a >> 2] .. b64[(a & 3) << 4] .. "=="
+  elseif rest == 2 then
+    local a, b = data:byte(len - 1, len)
+    local v = a * 256 + b
+    n = n + 1
+    out[n] = b64[v >> 10] .. b64[(v >> 4) & 63] .. b64[(v & 15) << 2] .. "="
+  end
+  return table.concat(out)
 end
 
 local function read_file(path)
@@ -178,4 +192,37 @@ function CodeBlock(el)
     return pandoc.RawBlock("latex", diagram)
   end
   return nil
+end
+
+-- Embed plain local images (`![caption](path)') as base64 data: URIs so
+-- the HTML stays self-contained wherever it is written, e.g. the temp
+-- file `markdown-preview' (C-c C-c p) opens. Relative paths resolve
+-- against Pandoc's working directory, i.e. the .md file's directory.
+-- Remote URLs, existing data: URIs (including this filter's own TikZ
+-- output) and unreadable files are left untouched.
+local mime_types = {
+  png = "image/png", apng = "image/apng", jpg = "image/jpeg",
+  jpeg = "image/jpeg", jpe = "image/jpeg", jfif = "image/jpeg",
+  gif = "image/gif", svg = "image/svg+xml", webp = "image/webp",
+  avif = "image/avif", bmp = "image/bmp", ico = "image/x-icon",
+  tif = "image/tiff", tiff = "image/tiff",
+}
+
+function Image(el)
+  if not FORMAT:match("html") then
+    return nil
+  end
+  local src = el.src
+  if src:match("^%a[%w+.-]*:") then
+    return nil -- data:, http(s):, file:, ...
+  end
+  local path = src:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
+  local mime = mime_types[(path:match("%.(%w+)$") or ""):lower()]
+  local data = mime and read_file(path)
+  if not data then
+    io.stderr:write("tikz2svg.lua: not embedding image " .. src .. "\n")
+    return nil
+  end
+  el.src = "data:" .. mime .. ";base64," .. base64_encode(data)
+  return el
 end
